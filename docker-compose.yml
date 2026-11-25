@@ -1,0 +1,72 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: trungtam-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: trungtam
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: trungtam-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    container_name: trungtam-backend
+    environment:
+      DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/trungtam?schema=public"
+      REDIS_URL: "redis://redis:6379"
+      JWT_SECRET: "thay-doi-secret-nay-trong-production"
+      JWT_EXPIRES_IN: "1h"
+      JWT_REFRESH_SECRET: "thay-doi-refresh-secret-nay"
+      JWT_REFRESH_EXPIRES_IN: "7d"
+      PORT: "3001"
+      FRONTEND_URL: "http://localhost:3000"
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    # Entrypoint chay migrate + seed lan dau neu DB trong (xem backend/entrypoint.sh).
+
+  frontend:
+    build: ./frontend
+    container_name: trungtam-frontend
+    environment:
+      NEXT_PUBLIC_API_URL: "http://localhost:3001/api"
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:
